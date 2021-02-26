@@ -2,10 +2,12 @@ import urllib
 
 import PySimpleGUI as sg
 import cv2
+import imutils as imutils
 import numpy as np
 from PIL import ImageGrab
 
-global frame, cropped, croppedgrab ,template
+global frame, cropped, croppedgrab, template, processed, found , processed_2compare , resized, r
+found=[]
 """
 Demo program that displays a webcam using OpenCV and applies some very basic image functions
 - functions from top to bottom -
@@ -46,15 +48,15 @@ def draw_rect(frame):
     cv2.rectangle(frame, (top_left_x, top_left_y), (bottom_right_x, bottom_right_y), 255, 3)
     cropped = frame[bottom_right_y:top_left_y, top_left_x:bottom_right_x]
 
+
 def templates(a):
     global template
     global tH
     global tW
     global zipped_template
 
-
     # 저장경로에서 0-9까지의 template을 들고온다.
-    templatepath = ('C:\\Users\\USER\\Desktop\\test\\template\\facnroll7seg_v20\\20FACNROLL_'+str(a)+'.png')  # trainImage
+    templatepath = ('C:\\Users\\USER\\Desktop\\test\\template\\facnroll7seg_v20\\20FACNROLL_' + str(a) + '.png')  # trainImage
     # 이미지 템플렛을 로딩해서 참고한다.
     template = cv2.imread(templatepath, 1)  # trainImage
     # print('비교하는 숫자',a)
@@ -62,10 +64,11 @@ def templates(a):
     # 이미지 template의 가로 세로를 구한다
     # grayscale로 변경하고
     template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-    cv2.imshow('template', template)
+
+    #cv2.imshow('template', template)
     # 테두리를 감지한다  -> 인식률을 높여줌 (template이 이미 테두리 처리 된 거라서 일단 주석처리함)
-    #emplate = cv2.Canny(template, 50, 200)
-    print(template)
+    # emplate = cv2.Canny(template, 50, 200)
+    #print(template)
 
     # templates.append(template)
     # numbers = range(0, 10)
@@ -73,7 +76,54 @@ def templates(a):
 
     # 템플렛의 가로 세로를 구한다
     (tH, tW) = template.shape[:2]
+
+    print('가로세로',tH , tW)
     return template
+
+def resize_video(scale):
+    global processed
+    global r
+
+    global resized
+    # mask처리된 부분을 점점점 작게  resize해서 resized에 저장한다.
+    resized = imutils.resize(processed, width=int(processed.shape[1] * scale))
+    # 비율 구하기 : 원래잘린 가로 길이 / 사이즈 바뀐 가로 길이
+    r = float(resized.shape[1] / processed.shape[1])
+
+
+
+def compare_match(temp_i, m):
+    print('유사이미지 찾기 들어옴')
+    global found, processed , frame
+
+    #(pH,pW)= processed_2compare.shape[:2]
+    #print('pH, pW',pH, pW)
+    templatepath = ('C:\\Users\\USER\\Desktop\\test\\template\\facnroll7seg_v20\\20FACNROLL_' + str(
+        temp_i) + '.png')  # trainImage
+    print(templatepath)
+    # 이미지 템플렛을 로딩해서 참고한다.
+    template = cv2.imread(templatepath,1)  # trainImage
+    #print('template',template)
+    #cv2.imshow('template',template)
+    template_2gray=cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+
+
+
+
+
+    #---------------------
+
+    #여기서 배교 (비교할 이미지, template, method)
+    compare = cv2.matchTemplate(processed, template_2gray, m)
+    (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(compare)
+    print('minVal, maxVal, minLoc, maxLoc', minVal, maxVal, minLoc, maxLoc)
+    if found == [] or maxVal > found[0] :
+
+        found = (maxVal, maxLoc, temp_i)
+        print('temp_i',temp_i)
+    print('found', found)
+    return found
+
 def main():
     global cropped, frame
     sg.theme('Dashboard')
@@ -110,18 +160,21 @@ def main():
          sg.Button('품목분류', button_color=('white', 'springgreen4'), key='categorize')]
     ]
 
-    block_template=[
+    block_template = [
         [sg.Image(filename='', key='-template0-'),
          sg.Image(filename='', key='-template1-'),
          sg.Image(filename='', key='-template2-'),
          sg.Image(filename='', key='-template3-'),
          sg.Image(filename='', key='-template4-'),
          sg.Image(filename='', key='-template5-'),
-         sg.Image(filename='', key='-template6-'),
-         sg.Image(filename='', key='-template7-'),
-         sg.Image(filename='', key='-template8-'),
-         sg.Image(filename='', key='-template9-'),
-         ],
+         sg.Button('찾기', button_color=('white', 'black'), key='findmatchtemplate'),
+         sg.Listbox(values=('결과값','여기'), size=(30,4),key='_COMPARERESULT_')],
+        [
+            sg.Image(filename='', key='-template6-'),
+            sg.Image(filename='', key='-template7-'),
+            sg.Image(filename='', key='-template8-'),
+            sg.Image(filename='', key='-template9-'),
+        ],
 
     ]
     layout = [
@@ -130,7 +183,7 @@ def main():
             [sg.Column(top, size=(400, 450), pad=(5, 5)),
              sg.Column(block_2, size=(520, 600), pad=(10, 10))]
             , [sg.Column(block_execute_btn, size=(800, 40), pad=(10, 10))]
-            ,[sg.Column(block_template, size=(800, 100), pad=(10, 10))]
+            , [sg.Column(block_template, size=(800, 250), pad=(10, 10))]
         ],
 
             background_color=BORDER_COLOR),
@@ -145,10 +198,11 @@ def main():
 
     cap = cv2.VideoCapture(0)
 
-
     while True:
 
-        global cropped
+
+        global cropped, processed, processed_2compare , croppedgrab , found , resized , r
+
         event, values = window.read(timeout=20)
         if event == 'Exit' or event == sg.WIN_CLOSED:
             break
@@ -165,10 +219,13 @@ def main():
 
         if values['-THRESH-']:
             processed = cv2.cvtColor(croppedgrab, cv2.COLOR_BGR2LAB)[:, :, 0]
+
             processed = cv2.threshold(processed, values['-THRESH SLIDER-'], 255, cv2.THRESH_BINARY)[1]
             processedbyte = cv2.imencode('.png', processed)[1].tobytes()
             window['-cropped_processed-'].update(data=processedbyte)
+            (pH, pW) = processed.shape[:2]
 
+            #print('pH, pW', pH, pW)
         elif values['-CANNY-']:
             processed = cv2.Canny(croppedgrab, values['-CANNY SLIDER A-'], values['-CANNY SLIDER B-'])
             processedbyte = cv2.imencode('.png', processed)[1].tobytes()
@@ -191,19 +248,39 @@ def main():
             processedbyte = cv2.imencode('.png', processed)[1].tobytes()
             window['-cropped_processed-'].update(data=processedbyte)
         # __cut image 부터 다시 하기
-        elif event == 'CUT':
+        if event == 'CUT':
 
             croppedgrab = cropped
             croppedgrabbyte = cv2.imencode('.png', croppedgrab)[1].tobytes()
             window['-cropped_captured-'].update(data=croppedgrabbyte)
 
-        elif event =='matchtemplate':
+        elif event == 'matchtemplate':
+            print('출력확인')
             for a in range(0, 10):
                 templates(a)
                 templatebytes = cv2.imencode('.png', template)[1].tobytes()
                 window['-template' + str(a) + '-'].update(data=templatebytes)
+        if event == 'findmatchtemplate':
+            methods = ['cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCOEFF']
+            found = []
+            print('emptyfound?',found)
+            for meth in methods:
+                method=eval(meth)
+                for scale in np.linspace(0.5, 1.0, num=5)[::-1]:
+                    resize_video(scale)
+                    for a in range(1, 10):
+
+                        print(a)
+                        compare_match(a, method)
+                        result = compare_match(a, method)
+
+            print('result', result)
+
+            window.Element('_COMPARERESULT_').update(['결과값', str(result[2])])
         imgbytes = cv2.imencode('.png', frame)[1].tobytes()
         window['-IMAGE-'].update(data=imgbytes)
+
+
 
     window.close()
 
